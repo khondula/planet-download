@@ -1,6 +1,8 @@
 ---
 title: "Download Planet Imagery"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -37,6 +39,7 @@ Still having problems creating the filter json using jsonlite
 
 ```{r}
 search_combinedfilter <- jsonlite::read_json("search_combinedfilter.json")
+toJSON(search_combinedfilter, pretty = TRUE)
 ```
 
 Search API 
@@ -57,10 +60,81 @@ http_status(r)
 ```{r}
 headers(r)
 ```
+
 save returned content in an object
 
 ```{r}
 r_content <- content(r)
 sapply(r_content$features, function(x) x[["id"]])
+```
+
+## Activate asset for download
+
+The search returns "items" which each have several "assets" which are the things you actually want to download
+
+```{r}
+str(r_content$features[[1]])
+r_content$features[[1]]$id
+r_content$features[[1]]$properties
+```
+
+Each item has an assets endpoint in the API that lists all of its assets.
+
+Sent a GET request to the assets url. There must be a way to set authentication for the session so you don't need to put the authentication in again. 
+
+```{r}
+assets_url <- r_content$features[[1]]$`_links`$assets
+r2 <- GET(assets_url, authenticate(api_key, password = ""))
+http_status(r2)
+content(r2) %>% names()
+```
+
+Look at the visual asset
+
+```{r}
+assets <- content(r2)
+assets$visual
+```
+
+Send a request to the activation link 
+
+```{r}
+activation_url <- assets$visual$`_links`$activate
+```
+
+```{r}
+r3 <- GET(activation_url, authenticate(api_key, password = ""))
+http_status(r3)
+```
+
+Status codes 
+
+* **202** - The request has been accepted and the activation will begin shortly.
+* **204** - The asset is already active and no further action is needed.
+* **401** - The user does not have permissions to download this file.
+
+Once an asset is active, the response will contain a location. We'll use the location to download the asset!
+
+Re-do the GET request to the asset url, which now has a location
+
+```{r}
+r2 <- GET(assets_url, authenticate(api_key, password = ""))
+http_status(r2)
+location_url <- content(r2)$visual$location
+```
+
+Download the file
+
+```{r}
+filename <- paste0("planet_download/", r_content$features[[1]]$id, ".tiff")
+download.file(location_url, filename)
+```
+
+read in as a raster and plot
+
+```{r}
+library(raster)
+jones <- raster(filename)
+plot(jones)
 ```
 
