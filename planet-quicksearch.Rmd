@@ -1,0 +1,66 @@
+---
+title: "Download Planet Imagery"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(jsonlite)
+library(httr)
+```
+
+```{r}
+api_key <- scan("planet-api-key", "")
+```
+
+API endpoints
+
+```{r}
+planet_api_URL <- "https://api.planet.com/data/v1/"
+planet_stats_api <- 'https://api.planet.com/data/v1/stats'
+planet_quicksearch_api <- 'https://api.planet.com/data/v1/quick-search'
+```
+
+Get item types, test API status
+```{r}
+r <- GET("https://api.planet.com/data/v1/item-types/")
+http_status(r)
+content(r)
+```
+
+Read in filter from json file
+
+Still having problems creating the filter json using jsonlite
+
+```{r}
+search_combinedfilter <- jsonlite::read_json("search_combinedfilter.json")
+```
+
+Search API 
+
+```{r}
+r <- POST(planet_quicksearch_api,
+          authenticate(api_key, password = ""),
+          body = search_combinedfilter,
+          encode = "json")
+```
+
+check status
+
+```{r}
+http_status(r)
+```
+
+```{r}
+headers(r)
+```
+save returned content in an object
+
+```{r}
+r_content <- content(r)
+sapply(r_content$features, function(x) x[["id"]])
+```
+
