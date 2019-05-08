@@ -1,0 +1,144 @@
+---
+title: "Download Planet Imagery"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(httr)
+library(jsonlite)
+library(magrittr)
+```
+
+```{r}
+# api_key <- scan("planet-api-key", "")
+api_key <- scan("planet-api-key-nate", "")
+# api_key <- scan("planet-api-key-cheng", "")
+```
+
+TODO - modify this to handle multiple images at once
+
+API endpoints
+
+```{r}
+planet_api_URL <- "https://api.planet.com/data/v1/"
+planet_stats_api <- 'https://api.planet.com/data/v1/stats'
+planet_quicksearch_api <- 'https://api.planet.com/data/v1/quick-search'
+```
+
+# Download a specific asset based on item ID
+
+Read in filter from json file (Still having problems creating the filter json using jsonlite)
+
+Create a search JSON string based on an ID
+
+```{r}
+create_search_filter_3band <- function(idstring = "20171124_154939_0f29"){
+  searchlist <- list(name = "PSScene3Band",
+       item_types = list("PSScene3Band"),
+       filter = list(
+         type = "StringInFilter",
+         field_name = "id",
+         config = list(idstring)
+       ))
+  jsonlite::toJSON(searchlist)
+  searchlist
+}
+```
+
+```{r}
+# imgIDs_enough_training <- readxl::read_excel("images_inventory/Planet Data.xlsx", sheet = "Planet_pipeline", skip = 1) %>%
+#   dplyr::rename(enough_training = 9) %>%
+#   dplyr::select(imgID, enough_training) %>%
+#   dplyr::filter(enough_training) %>% dplyr::pull(imgID)
+```
+
+```{r}
+# imgIDs_JL <- readr::read_csv("NDimgs.csv") %>% dplyr::pull(1)
+```
+
+```{r}
+myimgs_nfs <- substr(basename(list.files("/Volumes/khondula-data/planetmethane/data/")), 1, 20)
+myimgs_local <- substr(basename(list.files("download_sr/")), 1, 20)
+
+# myudms <- substr(basename(list.files("download_udm/")), 1, 20)
+# myxmls <- substr(basename(list.files("download_xml/")), 1, 20)
+
+myimgs <- unique(c(myimgs_local, myimgs_nfs))
+
+myvisuals_nfs <- substr(basename(list.files("/Volumes/khondula-data/planetmethane/metadata/download_visual")), 1, 20)
+myvisuals_local <- substr(basename(list.files("download_visual/")), 1, 20)
+myvisuals <- unique(c(myvisuals_local, myvisuals_nfs))
+visuals_to_get <- myimgs[!myimgs %in% myvisuals]
+visuals_to_get
+# visuals_to_get <- imgIDs_enough_training[!imgIDs_enough_training %in% myvisuals]
+# udms_to_get <-  myimgs[!myimgs %in% myudms]
+# xmls_to_get <-  myimgs[!myimgs %in% myxmls]
+# id_to_use <- xmls_to_get[1]
+# id_to_use <- udms_to_get[1]
+id_to_use <- visuals_to_get[1]
+id_to_use
+```
+
+```{r}
+search1 <- create_search_filter_3band(idstring = id_to_use)
+# search1 <- create_search_filter(idstring = "20180930_152159_0f42")
+# itemtype <- "analytic_sr"
+# itemtype <- "udm"
+# itemtype <- "analytic_xml"
+itemtype <- "visual"
+
+```
+
+Search API 
+
+```{r}
+r <- POST(planet_quicksearch_api,
+          authenticate(api_key, password = ""),
+          body = search1,
+          encode = "json")
+```
+
+save returned content in an object called `r`.
+
+```{r}
+r_content <- content(r)
+feature_ids <- sapply(r_content$features, function(x) x[["id"]])
+feature_ids
+```
+
+## Activate asset for download
+
+```{r}
+i = 1
+assets_url <- r_content$features[[i]]$`_links`$assets
+r2 <- GET(url = assets_url, config = authenticate(api_key, password = ""))
+assets <- content(r2)
+activation_url <- assets[[itemtype]]$`_links`$activate
+activation_request <- GET(activation_url, authenticate(api_key, password = ""))
+http_status(activation_request)
+```
+
+Once an asset is active, the response will contain a location. Use the location to download the asset.
+Re-do the GET request to the asset url, which now has a location
+
+```{r}
+assets_url <- r_content$features[[i]]$`_links`$assets
+r2 <- GET(url = assets_url, config = authenticate(api_key, password = ""))
+location_url <- content(r2)[[itemtype]]$location
+location_url
+```
+
+Download the file
+```{r}
+if(itemtype == "analytic_sr"){filename <- paste0("download_sr/", feature_ids[i], "_", itemtype, ".tiff")}
+if(itemtype == "udm"){filename <- paste0("download_udm/", feature_ids[i], "_", itemtype, ".tiff")}
+if(itemtype == "analytic_xml"){filename <- paste0("download_xml/", feature_ids[i], "_", itemtype, ".xml")}
+if(itemtype == "visual"){filename <- paste0("download_visual/", feature_ids[i], "_", itemtype, ".tiff")}
+
+download.file(location_url, filename)
+```
+
+
